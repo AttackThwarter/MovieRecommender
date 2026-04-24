@@ -1,7 +1,7 @@
 import streamlit as st
 from openai import OpenAI
 from datetime import datetime
-from fpdf import FPDF # کتابخانه جدید برای PDF
+from fpdf import FPDF
 from database import (
     init_db, save_message, load_messages, get_user_sessions, 
     delete_session, update_feedback, save_user_profile, 
@@ -12,9 +12,7 @@ from database import (
 init_db()
 
 # --- توابع کمکی برای خروجی گرفتن ---
-
 def create_txt_export(messages):
-    """تولید متن ساده برای خروجی TXT"""
     text = "🎬 لیست پیشنهادی فیلم های من\n"
     text += "="*30 + "\n\n"
     for m in messages:
@@ -24,31 +22,23 @@ def create_txt_export(messages):
     return text
 
 def create_pdf_export(messages):
-    """تولید فایل PDF با پشتیبانی از فارسی"""
     pdf = FPDF()
     pdf.add_page()
-    
-    # --- بارگذاری فونت فارسی (بسیار مهم) ---
-    # شما باید فایل Vazir.ttf را در پوشه پروژه داشته باشید
     try:
         pdf.add_font('Vazir', '', 'Vazir.ttf')
         pdf.set_font('Vazir', size=12)
     except:
-        # اگر فونت پیدا نشد، از فونت استاندارد استفاده می‌کند (که فارسی را خراب نشان می‌دهد)
         pdf.set_font("Arial", size=12)
     
     pdf.multi_cell(0, 10, txt="لیست پیشنهادی فیلم", align='C')
     pdf.ln(10)
-    
     for m in messages:
         if m["role"] == "assistant":
-            # تمیز کردن متن از ستاره‌های مارک‌داون برای PDF
             clean_text = m['content'].replace("**", "")
             pdf.multi_cell(0, 10, txt=clean_text, align='R')
             pdf.ln(5)
             pdf.cell(0, 0, "-"*50, align='C')
             pdf.ln(5)
-            
     return pdf.output()
 
 # --- تنظیمات صفحه ---
@@ -142,10 +132,9 @@ if st.sidebar.button("🗑️ پاک کردن این چت"):
 
 st.sidebar.divider()
 
-# --- ۶. بخش خروجی گرفتن (Export) ---
+# ۶. بخش خروجی گرفتن
 st.sidebar.title("📥 خروجی گرفتن")
 if st.session_state.get("messages"):
-    # دکمه دانلود TXT
     txt_data = create_txt_export(st.session_state.messages)
     st.sidebar.download_button(
         label="📄 دانلود به صورت TXT",
@@ -154,8 +143,6 @@ if st.session_state.get("messages"):
         mime="text/plain",
         use_container_width=True
     )
-    
-    # دکمه دانلود PDF (نیاز به فونت در پوشه دارد)
     try:
         pdf_data = create_pdf_export(st.session_state.messages)
         st.sidebar.download_button(
@@ -166,9 +153,9 @@ if st.session_state.get("messages"):
             use_container_width=True
         )
     except:
-        st.sidebar.error("خطا در تولید PDF (احتمالا فایل فونت Vazir.ttf وجود ندارد)")
+        pass
 
-# ۷. نمایش چت
+# ۷. نمایش تاریخچه چت
 if not st.session_state.get("messages") or st.session_state.current_session:
     st.session_state.messages = load_messages(st.session_state.current_session)
 
@@ -179,39 +166,70 @@ for message in st.session_state.messages:
             if message["role"] == "assistant" and message.get("feedback") is not None:
                 st.write("👍" if message["feedback"] == 1 else "👎")
 
-# ۸. دریافت پیام و تزریق پرامپت
-if prompt := st.chat_input("چه فیلمی پیشنهاد می‌دی؟"):
+# ==========================================
+# ۸. دکمه‌های پیشنهاد سریع (ویژگی جدید)
+# ==========================================
+st.markdown("<br>", unsafe_allow_html=True) # ایجاد کمی فاصله از پیام‌های قبلی
+col1, col2, col3 = st.columns(3)
+
+quick_prompt = None
+if col1.button("🎲 سورپرایزم کن!", use_container_width=True):
+    quick_prompt = "🎲 یک فیلم کاملاً تصادفی و شاهکار پیشنهاد بده که سورپرایز بشم!"
+if col2.button("🍿 یه فیلم برای دورهمی", use_container_width=True):
+    quick_prompt = "🍿 یک فیلم جذاب و سرگرم‌کننده برای تماشا با دوستان در دورهمی پیشنهاد بده."
+if col3.button("😭 یه فیلم که اشکم رو دربیاره", use_container_width=True):
+    quick_prompt = "😭 یک فیلم به شدت احساسی و غم‌انگیز پیشنهاد بده که اشکم رو دربیاره."
+
+# ۹. دریافت پیام (از طریق تایپ یا دکمه‌های سریع)
+prompt = st.chat_input("چه فیلمی پیشنهاد می‌دی؟")
+final_prompt = prompt or quick_prompt
+
+if final_prompt:
     with st.chat_message("user"):
-        st.markdown(prompt)
+        st.markdown(final_prompt)
     
-    u_id = save_message(st.session_state.current_session, username, "user", prompt)
-    st.session_state.messages.append({"id": u_id, "role": "user", "content": prompt, "feedback": None})
+    u_id = save_message(st.session_state.current_session, username, "user", final_prompt)
+    st.session_state.messages.append({"id": u_id, "role": "user", "content": final_prompt, "feedback": None})
 
     if client:
         with st.chat_message("assistant"):
             try:
                 current_user_profile = get_user_profile(username)
                 FULL_SYSTEM_PROMPT = f"""
-                تو یک متخصص فیلم هستی. سلیقه کاربر: [{current_user_profile}]
-                قوانین: فقط فیلم واقعی، دقیقا ۳ عدد، نام انگلیسی، فرمت (🎬، 🎭، 💡).
+                تو یک متخصص پیشنهاد فیلم با دانش دایره‌المعارفی هستی.
+                سلیقه کاربر: [{current_user_profile}]
+                
+                قوانین حیاتی:
+                ۱. فقط فیلم‌های واقعی پیشنهاد بده.
+                ۲. دقیقا ۳ فیلم معرفی کن. نام فیلم‌ها حتما انگلیسی باشد.
+                ۳. پاسخ تو باید صمیمی، فارسی و دقیقا با فرمت زیر باشد (هیچ متن اضافه‌ای ننویس):
+
+                🎬 **[Movie Name]** ([Year])
+                🎭 **ژانر:** [فارسی]
+                💡 **چرا این فیلم؟** [در یک خط توضیح بده]
                 """
+
                 messages_for_api = [{"role": "system", "content": FULL_SYSTEM_PROMPT}]
                 for m in st.session_state.messages:
                     if m["role"] != "system":
                         messages_for_api.append({"role": m["role"], "content": m["content"]})
 
                 stream = client.chat.completions.create(
-                    model=model_name, messages=messages_for_api,
-                    temperature=temp_value, stream=True 
+                    model=model_name,
+                    messages=messages_for_api,
+                    temperature=temp_value,
+                    stream=True 
                 )
                 bot_response = st.write_stream(stream)
+                
                 b_id = save_message(st.session_state.current_session, username, "assistant", bot_response)
                 st.session_state.messages.append({"id": b_id, "role": "assistant", "content": bot_response, "feedback": None})
                 st.rerun()
+                
             except Exception as e:
-                st.error(f"خطا: {e}")
+                st.error(f"خطا در مدل: {e}")
 
-# ۹. سیستم فیدبک
+# ۱۰. سیستم فیدبک
 if len(st.session_state.messages) > 1 and st.session_state.messages[-1]["role"] == "assistant":
     last_msg = st.session_state.messages[-1]
     if last_msg.get("feedback") is None:
@@ -219,4 +237,4 @@ if len(st.session_state.messages) > 1 and st.session_state.messages[-1]["role"] 
         if feedback is not None:
             update_feedback(last_msg["id"], feedback)
             st.session_state.messages[-1]["feedback"] = feedback
-            st.toast("بازخورد ثبت شد.")
+            st.toast("بازخورد شما در دیتابیس ذخیره شد.")
