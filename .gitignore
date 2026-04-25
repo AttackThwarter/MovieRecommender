@@ -1,3 +1,16 @@
+# Environments
 venv/
+env/
+.env
+
+# Python Cache
 __pycache__/
+*.pyc
+
+# Database and Vector DB
+movies_app.db
 chroma_db/
+
+# OS generated files
+.DS_Store
+Thumbs.db
