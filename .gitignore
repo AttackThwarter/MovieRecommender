@@ -6,6 +6,7 @@ env/
 # Python Cache
 __pycache__/
 *.pyc
+.vscode
 
 # Database and Vector DB
 movies_app.db
