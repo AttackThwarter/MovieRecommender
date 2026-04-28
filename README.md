@@ -80,5 +80,18 @@ streamlit run app.py
 ## 📚 Academic Objective
 This project serves as a research platform to evaluate the effectiveness of **Self-Correction Loops** and **Multi-Agent Collaboration** in improving the output quality of Small Language Models (SLMs) in multilingual contexts.
 
+
+## 🙏 Acknowledgments
+
+Special thanks to **Mohammad** for his valuable [Persian Movie Dataset](https://github.com/mohammad26845/persian_movie_dataset), which was instrumental in building the RAG engine for this project.
+
+<details>
+<summary><strong>🇮🇷 قدردانی</strong></summary>
+با تشکر ویژه از **محمد** عزیز برای دیتاست ارزشمند [Persian Movie Dataset](https://github.com/mohammad26845/persian_movie_dataset) که منبع اصلی بخش RAG این پروژه برای فیلم‌های ایرانی بوده است.
+</details>
+
+---
+
+
 ## 📄 License
 This project is licensed under the [MIT License](LICENSE).
