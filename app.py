@@ -4,6 +4,10 @@ from datetime import datetime
 from fpdf import FPDF
 import chromadb
 from chromadb.utils import embedding_functions
+import os
+
+# --- دور زدن فیلترشکن برای ارتباط لوکال ---
+os.environ["NO_PROXY"] = "127.0.0.1,localhost"
 
 # وارد کردن تنظیمات از فایل کانفیگ
 import config
@@ -14,8 +18,17 @@ from database import (
     get_user_profile, get_all_user_messages
 )
 
-# --- ۱. راه‌اندازی دیتابیس ---
+# --- ۱. راه‌اندازی دیتابیس و کلاینت‌ها ---
 init_db()
+
+client_gen = OpenAI(base_url=config.GEN_BASE_URL, api_key=config.GEN_API_KEY) if config.GEN_API_KEY else None
+
+if config.USE_SEPARATE_CRITIC:
+    client_critic = OpenAI(base_url=config.CRI_BASE_URL, api_key=config.CRI_API_KEY) if config.CRI_API_KEY else None
+    cri_model_name = config.CRI_MODEL_NAME
+else:
+    client_critic = client_gen
+    cri_model_name = config.GEN_MODEL_NAME
 
 # --- ۲. توابع RAG ---
 @st.cache_resource
@@ -66,11 +79,10 @@ def create_pdf_export(messages):
             pdf.ln(5)
     return pdf.output()
 
-# --- ۴. تابع پروفایل‌سازی پنهان (درخواست استاد برای Cold Start) ---
+# --- ۴. تابع پروفایل‌سازی پنهان ---
 def background_profile_update(username, client, gen_model_name):
     history = get_all_user_messages(username)
     msg_count = len(history)
-    # آپدیت در پیام‌های ۲، ۵، ۱۰، ۲۰، ۴۰ (کاهش فرکانس به مرور زمان)
     if msg_count in [2, 5, 10, 20, 40] and client:
         try:
             analysis_prompt = f"با توجه به این پیام‌ها سلیقه سینمایی کاربر را در یک جمله کوتاه خلاصه کن: {str(history)}"
@@ -81,13 +93,13 @@ def background_profile_update(username, client, gen_model_name):
             )
             save_user_profile(username, response.choices[0].message.content)
         except Exception:
-            pass # در بک‌اند ارور نمایش داده نمی‌شود تا کاربر متوجه نشود
+            pass
 
 # --- ۵. تنظیمات رابط کاربری ---
 st.set_page_config(page_title="دستیار فیلم هوشمند", page_icon="🎬", layout="wide")
 st.title("🎬 دستیار فیلم هوشمند")
 
-# --- ۶. منوی کناری: حساب کاربری ---
+# --- ۶. منوی کناری ---
 st.sidebar.title("👤 حساب کاربری")
 username = st.sidebar.text_input("نام کاربری:", value="guest", key="user_input")
 
@@ -97,56 +109,16 @@ if "last_user" not in st.session_state or st.session_state.last_user != username
     st.session_state.messages = []
 st.sidebar.divider()
 
-# --- ۷. انتخاب حالت پردازش (ایده Fast/Pro/Ultra) ---
 st.sidebar.title("🚀 قدرت پردازش سیستم")
 selected_mode_name = st.sidebar.radio(
     "حالت پردازش را انتخاب کنید:", 
     list(config.PROCESSING_MODES.keys()),
-    index=1 # پیش‌فرض روی حالت Pro
+    index=1
 )
 mode_config = config.PROCESSING_MODES[selected_mode_name]
 st.sidebar.caption(mode_config["description"])
 st.sidebar.divider()
 
-# --- ۸. تنظیمات پیشرفته (پنهان در Expander) ---
-with st.sidebar.expander("⚙️ تنظیمات پیشرفته مدل‌ها"):
-    st.subheader("مدل پیشنهاددهنده")
-    gen_model_type = st.radio("منبع مدل تولید:", ["لوکال (LM Studio)", "OpenAI API"], key="gen_radio")
-    gen_temp = st.slider("خلاقیت:", 0.0, 1.0, config.GEN_DEFAULT_TEMP, 0.1, key="gen_temp")
-    
-    if gen_model_type == "لوکال (LM Studio)":
-        gen_base_url = st.text_input("آدرس سرور:", value=config.GEN_DEFAULT_URL, key="gen_url")
-        gen_api_key = config.GEN_DEFAULT_API_KEY
-        gen_model_name = st.text_input("نام مدل:", value=config.GEN_DEFAULT_MODEL, key="gen_mname_loc")
-    else:
-        gen_api_key = st.text_input("API Key:", type="password", key="gen_key")
-        gen_model_name = st.text_input("نام مدل API:", value="gpt-3.5-turbo", key="gen_mname_api")
-        gen_base_url = "https://api.gapgpt.app/v1"
-    
-    client_gen = OpenAI(base_url=gen_base_url, api_key=gen_api_key) if gen_api_key else None
-
-    st.divider()
-    st.subheader("مدل منتقد")
-    use_separate_critic = st.checkbox("استفاده از مدل مجزا برای منتقد", value=False)
-    if use_separate_critic:
-        cri_model_type = st.radio("منبع مدل منتقد:", ["OpenAI API", "لوکال (LM Studio)"], key="cri_radio")
-        if cri_model_type == "لوکال (LM Studio)":
-            cri_base_url = st.text_input("آدرس سرور منتقد:", value=config.CRI_DEFAULT_URL, key="cri_url")
-            cri_api_key = config.CRI_DEFAULT_API_KEY
-            cri_model_name = st.text_input("نام مدل منتقد:", value=config.CRI_DEFAULT_MODEL, key="cri_mname_loc")
-        else:
-            cri_api_key = st.text_input("API Key منتقد:", type="password", key="cri_key")
-            cri_model_name = st.text_input("نام مدل API منتقد:", value="gpt-4o-mini", key="cri_mname_api")
-            cri_base_url = "https://api.gapgpt.app/v1"
-        
-        client_critic = OpenAI(base_url=cri_base_url, api_key=cri_api_key) if cri_api_key else None
-    else:
-        client_critic = client_gen
-        cri_model_name = gen_model_name
-
-st.sidebar.divider()
-
-# --- ۹. مدیریت تاریخچه چت ---
 st.sidebar.title("💬 مدیریت چت‌ها")
 user_sessions = get_user_sessions(username)
 
@@ -173,7 +145,7 @@ if st.sidebar.button("🗑️ پاک کردن این چت"):
     st.session_state.current_session = None
     st.rerun()
 
-# --- ۱۰. نمایش پیام‌های قبلی ---
+# --- ۷. نمایش پیام‌های قبلی و سیستم فیدبک ---
 if not st.session_state.get("messages") or st.session_state.current_session:
     st.session_state.messages = load_messages(st.session_state.current_session)
 
@@ -181,9 +153,21 @@ for message in st.session_state.messages:
     if message["role"] != "system":
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            
+            # رندر کردن دکمه‌های لایک و دیسلایک فقط برای پیام‌های هوش مصنوعی
+            if message["role"] == "assistant":
+                col1, col2, col3 = st.columns([1, 1, 8])
+                with col1:
+                    if st.button("👍", key=f"like_{message['id']}"):
+                        update_feedback(message["id"], "like")
+                        st.toast("عالی! سلیقه شما ثبت شد. 👍")
+                with col2:
+                    if st.button("👎", key=f"dislike_{message['id']}"):
+                        update_feedback(message["id"], "dislike")
+                        st.toast("ممنون! دفعه بعد فیلم‌های بهتری پیشنهاد می‌دم. 👎")
 
 # ==========================================
-# 🧠 ۱۱. هسته پردازش پنهان چند-عامله (Multi-Agent Logic)
+# 🧠 ۸. هسته پردازش پنهان چند-عامله (Multi-Agent Logic)
 # ==========================================
 prompt = st.chat_input("چه فیلمی پیشنهاد می‌دی؟")
 
@@ -197,109 +181,85 @@ if prompt:
 
     if client_gen:
         enable_critic = mode_config["use_critic"]
-        if enable_critic and not client_critic:
-            st.error("لطفا در تنظیمات پیشرفته، منبع مدل منتقد را تکمیل کنید.")
-        else:
-            with st.chat_message("assistant"):
-                # استفاده از اسپینر ساده به جای وضعیت باز شونده (طبق نظر استاد)
-                with st.spinner(f"🤖 در حال بررسی و پردازش در بک‌اند ({selected_mode_name})..."):
+        with st.chat_message("assistant"):
+            with st.spinner(f"🤖 در حال بررسی و پردازش در بک‌اند ({selected_mode_name})..."):
+                
+                rag_context = search_iranian_movies(prompt, n_results=5)
+                
+                max_retries = mode_config["max_retries"]
+                attempt = 0
+                approved = False
+                final_response = ""
+                draft_response = "" 
+                critic_feedback = ""
+
+                while attempt < max_retries and not approved:
+                    attempt += 1
                     
-                    rag_context = search_iranian_movies(prompt, n_results=5)
-                    
-                    max_retries = mode_config["max_retries"]
-                    attempt = 0
-                    approved = False
-                    final_response = ""
-                    draft_response = "" 
-                    critic_feedback = ""
+                    feedback_str = f"<critic_feedback>\n{critic_feedback}\n</critic_feedback>" if enable_critic and attempt > 1 else ""
+                    GEN_PROMPT = config.GEN_PROMPT_TEMPLATE.format(
+                        user_style=user_style,
+                        rag_context=rag_context,
+                        feedback_section=feedback_str
+                    )
 
-                    while attempt < max_retries and not approved:
-                        attempt += 1
+                    try:
+                        gen_resp = client_gen.chat.completions.create(
+                            model=config.GEN_MODEL_NAME,
+                            messages=[{"role": "system", "content": GEN_PROMPT}, {"role": "user", "content": prompt}],
+                            temperature=config.GEN_TEMP
+                        )
+                        draft_response = gen_resp.choices[0].message.content
                         
-                        feedback_section = f"⚠️ ارور دور قبل که باید حتما اصلاح کنی:\n{critic_feedback}\n" if enable_critic and attempt > 1 else ""
-
-                        GEN_PROMPT = f"""
-                        تو یک هوش مصنوعی فوق‌حرفه‌ای و بسیار سخت‌گیر در معرفی فیلم هستی.
-                        سلیقه کاربر: [{user_style}]
-                        
-                        <local_database>
-                        {rag_context}
-                        </local_database>
-
-                        <critic_feedback>
-                        {critic_feedback}
-                        </critic_feedback>
-
-                        <rules>
-                        ۱. مسیریابی هیبریدی: اطلاعات داخل <local_database> فقط فیلم‌های ایرانی هستند. اگر کاربر فیلم خارجی خواست، این دیتابیس را نادیده بگیر و از دانش خودت فیلم جهانی معرفی کن. اگر فیلم ایرانی خواست، حتماً از دیتابیس استفاده کن.
-                        ۲. فقط معرفی فیلم: اگر کاربر سوال بی‌ربط پرسید، بگو: "من فقط یک دستیار معرفی فیلم هستم."
-                        ۳. زبان اجباری: تمام خروجی باید ۱۰۰٪ فارسی باشد.
-                        ۴. تعداد مجاز: دقیقا تعداد درخواستی را معرفی کن (پیش‌فرض ۳). سقف مطلق ۶ فیلم است.
-                        ۵. بدون حاشیه: هیچ مقدمه‌ای ننویس. مستقیم لیست را چاپ کن.
-                        </rules>
-
-                        <format>
-                        🎬 **[نام فیلم به فارسی] ([نام انگلیسی] - [سال])** | ⭐ امتیاز: [امتیاز]
-                        🎭 **ژانر:** [ژانر به فارسی]
-                        💡 **چرا این فیلم؟** [توضیح کوتاه]
-                        </format>
-                        """
-
-                        try:
-                            gen_resp = client_gen.chat.completions.create(
-                                model=gen_model_name,
-                                messages=[{"role": "system", "content": GEN_PROMPT}, {"role": "user", "content": prompt}],
-                                temperature=gen_temp
+                        if enable_critic:
+                            CRITIC_PROMPT = config.CRITIC_PROMPT_TEMPLATE.format(
+                                user_prompt=prompt,
+                                draft_response=draft_response
                             )
-                            draft_response = gen_resp.choices[0].message.content
                             
-                            if enable_critic:
-                                CRITIC_PROMPT = f"""بررسی خروجی مدل دیگر. پیام کاربر: "{prompt}"
-                                
-                                <generated_text>
-                                {draft_response}
-                                </generated_text>
-
-                                <evaluation_checklist>
-                                ۱. آیا کلمه انگلیسی در متن هست؟
-                                ۲. آیا تعداد فیلم‌ها بیشتر از ۶ عدد است؟
-                                ۳. آیا تعداد با خواسته کاربر یکی است؟
-                                ۴. آیا از ایموجی‌های فرمت استفاده شده است؟
-                                </evaluation_checklist>
-
-                                اگر بدون نقص بود بنویس: APPROVED
-                                اگر اشتباه بود بنویس: ERROR: [دلیل و دستور اصلاح]
-                                """
-                                
-                                cri_resp = client_critic.chat.completions.create(
-                                    model=cri_model_name,
-                                    messages=[{"role": "user", "content": CRITIC_PROMPT}],
-                                    temperature=0.0
-                                )
-                                critic_feedback = cri_resp.choices[0].message.content
-                                
-                                if "APPROVED" in critic_feedback.upper():
-                                    approved = True
-                                    final_response = draft_response
-                            else:
+                            cri_resp = client_critic.chat.completions.create(
+                                model=cri_model_name,
+                                messages=[{"role": "user", "content": CRITIC_PROMPT}],
+                                temperature=config.CRI_TEMP
+                            )
+                            critic_feedback = cri_resp.choices[0].message.content
+                            
+                            if "APPROVED" in critic_feedback.upper():
                                 approved = True
                                 final_response = draft_response
-                                
-                        except Exception as e:
-                            final_response = f"❌ خطای ارتباط با مدل: {e}"
-                            break 
+                        else:
+                            approved = True
+                            final_response = draft_response
                             
-                    if not approved and final_response == "":
-                        final_response = draft_response if draft_response != "" else "متاسفانه ارتباط با مدل برقرار نشد."
-                
-                # چاپ مستقیم خروجی نهایی
-                st.markdown(final_response)
-                
-                # ذخیره در دیتابیس
-                b_id = save_message(st.session_state.current_session, username, "assistant", final_response)
-                st.session_state.messages.append({"id": b_id, "role": "assistant", "content": final_response, "feedback": None})
-                
-                # فراخوانی تابع آپدیت سلیقه در بک‌اند
-                background_profile_update(username, client_gen, gen_model_name)
+                    except Exception as e:
+                        final_response = f"❌ خطای ارتباط با مدل: {e}"
+                        break 
+                        
+                if not approved and final_response == "":
+                    final_response = draft_response if draft_response != "" else "متاسفانه ارتباط با مدل برقرار نشد."
+            
+            # --- اضافه کردن فیلد ظاهری (Badge) به انتهای پیام ---
+            mode_badge = f"\n\n---\n*⚙️ تولید شده در حالت: **{selected_mode_name}***"
+            final_response_with_badge = final_response + mode_badge
+            
+            # چاپ خروجی نهایی روی صفحه
+            st.markdown(final_response_with_badge)
+            
+            # ذخیره متن همراه با بج در دیتابیس
+            b_id = save_message(st.session_state.current_session, username, "assistant", final_response_with_badge)
+            st.session_state.messages.append({"id": b_id, "role": "assistant", "content": final_response_with_badge, "feedback": None})
+            
+            # نمایش آنی دکمه‌ها برای پیام تازه تولید شده
+            col1, col2, col3 = st.columns([1, 1, 8])
+            with col1:
+                if st.button("👍", key=f"like_{b_id}"):
+                    update_feedback(b_id, "like")
+                    st.toast("عالی! سلیقه شما ثبت شد. 👍")
+            with col2:
+                if st.button("👎", key=f"dislike_{b_id}"):
+                    update_feedback(b_id, "dislike")
+                    st.toast("ممنون! دفعه بعد فیلم‌های بهتری پیشنهاد می‌دم. 👎")
+            
+            background_profile_update(username, client_gen, config.GEN_MODEL_NAME)
     else:
-        st.error("لطفا در منوی تنظیمات پیشرفته، اتصال به مدل را پیکربندی کنید.")
+        st.error("ارتباط با مدل برقرار نیست. لطفا فایل config.py را بررسی کنید.")
