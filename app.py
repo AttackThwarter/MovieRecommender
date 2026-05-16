@@ -1,13 +1,18 @@
 import streamlit as st
-from openai import OpenAI
+import requests
 from datetime import datetime
 from fpdf import FPDF
 import chromadb
 from chromadb.utils import embedding_functions
 import os
 
-# --- دور زدن فیلترشکن برای ارتباط لوکال ---
-os.environ["NO_PROXY"] = "127.0.0.1,localhost"
+# --- دور زدن فیلترشکن در سطح سیستم‌عامل ---
+os.environ["HTTP_PROXY"] = ""
+os.environ["HTTPS_PROXY"] = ""
+os.environ["http_proxy"] = ""
+os.environ["https_proxy"] = ""
+os.environ["NO_PROXY"] = "*"
+os.environ["no_proxy"] = "*"
 
 # وارد کردن تنظیمات از فایل کانفیگ
 import config
@@ -15,20 +20,33 @@ import config
 from database import (
     init_db, save_message, load_messages, get_user_sessions, 
     delete_session, update_feedback, save_user_profile, 
-    get_user_profile, get_all_user_messages
+    get_user_profile, get_all_user_messages, get_user_taste_from_ratings
 )
 
-# --- ۱. راه‌اندازی دیتابیس و کلاینت‌ها ---
+# --- ۱. راه‌اندازی دیتابیس ---
 init_db()
 
-client_gen = OpenAI(base_url=config.GEN_BASE_URL, api_key=config.GEN_API_KEY) if config.GEN_API_KEY else None
+# --- تابع جدید ارتباط مستقیم و ضد-پروکسی (جایگزین کتابخانه OpenAI) ---
+def call_local_model(base_url, api_key, model_name, messages, temperature):
+    """این تابع مستقیما با requests وصل می‌شود و تمام ارورهای httpx را دور می‌زند"""
+    url = f"{base_url}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "temperature": temperature
+    }
+    
+    # خاموش کردن اجباری پروکسی فقط برای این درخواست (مثل فایل test.py)
+    proxies = {"http": None, "https": None}
+    
+    response = requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=120)
+    response.raise_for_status() # اگر سرور ارور بدهد اینجا متوقف می‌شود
+    return response.json()["choices"][0]["message"]["content"]
 
-if config.USE_SEPARATE_CRITIC:
-    client_critic = OpenAI(base_url=config.CRI_BASE_URL, api_key=config.CRI_API_KEY) if config.CRI_API_KEY else None
-    cri_model_name = config.CRI_MODEL_NAME
-else:
-    client_critic = client_gen
-    cri_model_name = config.GEN_MODEL_NAME
 
 # --- ۲. توابع RAG ---
 @st.cache_resource
@@ -80,18 +98,21 @@ def create_pdf_export(messages):
     return pdf.output()
 
 # --- ۴. تابع پروفایل‌سازی پنهان ---
-def background_profile_update(username, client, gen_model_name):
+def background_profile_update(username):
     history = get_all_user_messages(username)
     msg_count = len(history)
-    if msg_count in [2, 5, 10, 20, 40] and client:
+    if msg_count in [2, 5, 10, 20, 40]:
         try:
             analysis_prompt = f"با توجه به این پیام‌ها سلیقه سینمایی کاربر را در یک جمله کوتاه خلاصه کن: {str(history)}"
-            response = client.chat.completions.create(
-                model=gen_model_name, 
-                messages=[{"role": "user", "content": analysis_prompt}], 
+            # استفاده از تابع جدید
+            response_text = call_local_model(
+                base_url=config.GEN_BASE_URL,
+                api_key=config.GEN_API_KEY,
+                model_name=config.GEN_MODEL_NAME,
+                messages=[{"role": "user", "content": analysis_prompt}],
                 temperature=0.3
             )
-            save_user_profile(username, response.choices[0].message.content)
+            save_user_profile(username, response_text)
         except Exception:
             pass
 
@@ -145,7 +166,7 @@ if st.sidebar.button("🗑️ پاک کردن این چت"):
     st.session_state.current_session = None
     st.rerun()
 
-# --- ۷. نمایش پیام‌های قبلی و سیستم فیدبک ---
+# --- ۷. نمایش پیام‌های قبلی و سیستم فیدبک ستاره‌ای ---
 if not st.session_state.get("messages") or st.session_state.current_session:
     st.session_state.messages = load_messages(st.session_state.current_session)
 
@@ -154,17 +175,20 @@ for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             
-            # رندر کردن دکمه‌های لایک و دیسلایک فقط برای پیام‌های هوش مصنوعی
             if message["role"] == "assistant":
-                col1, col2, col3 = st.columns([1, 1, 8])
-                with col1:
-                    if st.button("👍", key=f"like_{message['id']}"):
-                        update_feedback(message["id"], "like")
-                        st.toast("عالی! سلیقه شما ثبت شد. 👍")
-                with col2:
-                    if st.button("👎", key=f"dislike_{message['id']}"):
-                        update_feedback(message["id"], "dislike")
-                        st.toast("ممنون! دفعه بعد فیلم‌های بهتری پیشنهاد می‌دم. 👎")
+                st.caption("🔹 ثبت امتیاز به پیشنهاد بالا: **[ 1 ستاره: ضعیف ]** ─── **[ 5 ستاره: عالی ]**")
+                user_rating = st.feedback("stars", key=f"star_{message['id']}")
+                if user_rating is not None:
+                    actual_stars = user_rating + 1
+                    if str(message.get("feedback")) != str(actual_stars):
+                        update_feedback(message["id"], str(actual_stars))
+                        message["feedback"] = str(actual_stars)
+                        if actual_stars >= 4:
+                            st.toast(f"ممنون از {actual_stars} ستاره‌ای که دادی! تو حافظه‌ام موند. 😍")
+                        elif actual_stars <= 2:
+                            st.toast(f"اوپس! {actual_stars} ستاره؟ دفعه بعد جبران می‌کنم. 😅")
+                        else:
+                            st.toast("امتیازت ثبت شد!")
 
 # ==========================================
 # 🧠 ۸. هسته پردازش پنهان چند-عامله (Multi-Agent Logic)
@@ -178,88 +202,92 @@ if prompt:
     st.session_state.messages.append({"id": u_id, "role": "user", "content": prompt, "feedback": None})
 
     user_style = get_user_profile(username)
+    rating_history = get_user_taste_from_ratings(username)
 
-    if client_gen:
-        enable_critic = mode_config["use_critic"]
-        with st.chat_message("assistant"):
-            with st.spinner(f"🤖 در حال بررسی و پردازش در بک‌اند ({selected_mode_name})..."):
-                
-                rag_context = search_iranian_movies(prompt, n_results=5)
-                
-                max_retries = mode_config["max_retries"]
-                attempt = 0
-                approved = False
-                final_response = ""
-                draft_response = "" 
-                critic_feedback = ""
+    enable_critic = mode_config["use_critic"]
+    with st.chat_message("assistant"):
+        with st.spinner(f"🤖 در حال بررسی و پردازش در بک‌اند ({selected_mode_name})..."):
+            
+            rag_context = search_iranian_movies(prompt, n_results=5)
+            max_retries = mode_config["max_retries"]
+            attempt = 0
+            approved = False
+            final_response = ""
+            draft_response = "" 
+            critic_feedback = ""
 
-                while attempt < max_retries and not approved:
-                    attempt += 1
-                    
-                    feedback_str = f"<critic_feedback>\n{critic_feedback}\n</critic_feedback>" if enable_critic and attempt > 1 else ""
-                    GEN_PROMPT = config.GEN_PROMPT_TEMPLATE.format(
-                        user_style=user_style,
-                        rag_context=rag_context,
-                        feedback_section=feedback_str
+            while attempt < max_retries and not approved:
+                attempt += 1
+                feedback_str = f"<critic_feedback>\n{critic_feedback}\n</critic_feedback>" if enable_critic and attempt > 1 else ""
+                
+                GEN_PROMPT = config.GEN_PROMPT_TEMPLATE.format(
+                    user_style=user_style,
+                    rating_history=rating_history,
+                    rag_context=rag_context,
+                    feedback_section=feedback_str
+                )
+
+                try:
+                    # استفاده از تابع امن جدید برای تولید پیام
+                    draft_response = call_local_model(
+                        base_url=config.GEN_BASE_URL,
+                        api_key=config.GEN_API_KEY,
+                        model_name=config.GEN_MODEL_NAME,
+                        messages=[{"role": "system", "content": GEN_PROMPT}, {"role": "user", "content": prompt}],
+                        temperature=config.GEN_TEMP
                     )
-
-                    try:
-                        gen_resp = client_gen.chat.completions.create(
-                            model=config.GEN_MODEL_NAME,
-                            messages=[{"role": "system", "content": GEN_PROMPT}, {"role": "user", "content": prompt}],
-                            temperature=config.GEN_TEMP
+                    
+                    if enable_critic:
+                        CRITIC_PROMPT = config.CRITIC_PROMPT_TEMPLATE.format(
+                            user_prompt=prompt,
+                            draft_response=draft_response
                         )
-                        draft_response = gen_resp.choices[0].message.content
                         
-                        if enable_critic:
-                            CRITIC_PROMPT = config.CRITIC_PROMPT_TEMPLATE.format(
-                                user_prompt=prompt,
-                                draft_response=draft_response
-                            )
-                            
-                            cri_resp = client_critic.chat.completions.create(
-                                model=cri_model_name,
-                                messages=[{"role": "user", "content": CRITIC_PROMPT}],
-                                temperature=config.CRI_TEMP
-                            )
-                            critic_feedback = cri_resp.choices[0].message.content
-                            
-                            if "APPROVED" in critic_feedback.upper():
-                                approved = True
-                                final_response = draft_response
-                        else:
+                        # استفاده از تابع امن جدید برای منتقد
+                        cri_model_to_use = config.CRI_MODEL_NAME if config.USE_SEPARATE_CRITIC else config.GEN_MODEL_NAME
+                        cri_url_to_use = config.CRI_BASE_URL if config.USE_SEPARATE_CRITIC else config.GEN_BASE_URL
+                        cri_key_to_use = config.CRI_API_KEY if config.USE_SEPARATE_CRITIC else config.GEN_API_KEY
+
+                        critic_feedback = call_local_model(
+                            base_url=cri_url_to_use,
+                            api_key=cri_key_to_use,
+                            model_name=cri_model_to_use,
+                            messages=[{"role": "user", "content": CRITIC_PROMPT}],
+                            temperature=config.CRI_TEMP
+                        )
+                        
+                        if "APPROVED" in critic_feedback.upper():
                             approved = True
                             final_response = draft_response
-                            
-                    except Exception as e:
-                        final_response = f"❌ خطای ارتباط با مدل: {e}"
-                        break 
+                    else:
+                        approved = True
+                        final_response = draft_response
                         
-                if not approved and final_response == "":
-                    final_response = draft_response if draft_response != "" else "متاسفانه ارتباط با مدل برقرار نشد."
-            
-            # --- اضافه کردن فیلد ظاهری (Badge) به انتهای پیام ---
-            mode_badge = f"\n\n---\n*⚙️ تولید شده در حالت: **{selected_mode_name}***"
-            final_response_with_badge = final_response + mode_badge
-            
-            # چاپ خروجی نهایی روی صفحه
-            st.markdown(final_response_with_badge)
-            
-            # ذخیره متن همراه با بج در دیتابیس
-            b_id = save_message(st.session_state.current_session, username, "assistant", final_response_with_badge)
-            st.session_state.messages.append({"id": b_id, "role": "assistant", "content": final_response_with_badge, "feedback": None})
-            
-            # نمایش آنی دکمه‌ها برای پیام تازه تولید شده
-            col1, col2, col3 = st.columns([1, 1, 8])
-            with col1:
-                if st.button("👍", key=f"like_{b_id}"):
-                    update_feedback(b_id, "like")
-                    st.toast("عالی! سلیقه شما ثبت شد. 👍")
-            with col2:
-                if st.button("👎", key=f"dislike_{b_id}"):
-                    update_feedback(b_id, "dislike")
-                    st.toast("ممنون! دفعه بعد فیلم‌های بهتری پیشنهاد می‌دم. 👎")
-            
-            background_profile_update(username, client_gen, config.GEN_MODEL_NAME)
-    else:
-        st.error("ارتباط با مدل برقرار نیست. لطفا فایل config.py را بررسی کنید.")
+                except Exception as e:
+                    final_response = f"❌ خطای ارتباط با مدل: {e}"
+                    break 
+                    
+            if not approved and final_response == "":
+                final_response = draft_response if draft_response != "" else "متاسفانه ارتباط با مدل برقرار نشد."
+        
+        mode_badge = f"\n\n---\n*⚙️ تولید شده در حالت: **{selected_mode_name}***"
+        final_response_with_badge = final_response + mode_badge
+        st.markdown(final_response_with_badge)
+        
+        b_id = save_message(st.session_state.current_session, username, "assistant", final_response_with_badge)
+        st.session_state.messages.append({"id": b_id, "role": "assistant", "content": final_response_with_badge, "feedback": None})
+        
+        st.caption("🔹 امتیاز به پیشنهاد بالا: **[ 1 ستاره: ضعیف ]** ─── **[ 5 ستاره: عالی ]**")
+        user_rating_new = st.feedback("stars", key=f"star_{b_id}")
+        if user_rating_new is not None:
+            actual_stars_new = user_rating_new + 1
+            update_feedback(b_id, str(actual_stars_new))
+            st.session_state.messages[-1]["feedback"] = str(actual_stars_new)
+            if actual_stars_new >= 4:
+                st.toast(f"ممنون از {actual_stars_new} ستاره‌ای که دادی! تو حافظه‌ام موند. 😍")
+            elif actual_stars_new <= 2:
+                st.toast(f"اوپس! {actual_stars_new} ستاره؟ دفعه بعد جبران می‌کنم. 😅")
+            else:
+                st.toast("امتیازت ثبت شد!")
+        
+        background_profile_update(username)
