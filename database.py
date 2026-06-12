@@ -9,7 +9,6 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     
-    # ساخت جدول پیام‌ها با فیلد فیدبک
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT PRIMARY KEY,
@@ -22,7 +21,6 @@ def init_db():
         )
     ''')
     
-    # ساخت جدول پروفایل سلیقه کاربر
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS profiles (
             username TEXT PRIMARY KEY,
@@ -30,9 +28,19 @@ def init_db():
         )
     ''')
     
+    # --- جدول جدید: حافظه طلایی سیستم برای RLAIF ---
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS golden_memory (
+            id TEXT PRIMARY KEY,
+            content TEXT,
+            timestamp TEXT
+        )
+    ''')
+    
     conn.commit()
     conn.close()
 
+# --- توابع اصلی اپلیکیشن ---
 def save_message(session_id, username, role, content):
     m_id = str(uuid.uuid4())
     conn = sqlite3.connect(DB_PATH)
@@ -99,7 +107,6 @@ def get_all_user_messages(username):
     return [r[0] for r in rows]
 
 def get_user_taste_from_ratings(username, limit=5):
-    """آخرین فیلم‌های پیشنهاد شده و امتیاز کاربر به آن‌ها را استخراج می‌کند"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('''
@@ -108,7 +115,6 @@ def get_user_taste_from_ratings(username, limit=5):
         AND role = 'assistant' AND feedback IS NOT NULL
         ORDER BY timestamp DESC LIMIT ?
     ''', (username, limit))
-    
     rows = cursor.fetchall()
     conn.close()
     
@@ -122,7 +128,6 @@ def get_user_taste_from_ratings(username, limit=5):
         try:
             rating = int(feedback)
             movie_summary = content.split('\n')[0][:50] + "..." 
-            
             if rating >= 4:
                 liked_movies.append(f"امتیاز {rating} ستاره به: {movie_summary}")
             elif rating <= 2:
@@ -135,5 +140,37 @@ def get_user_taste_from_ratings(username, limit=5):
         taste_profile += "✅ کاربر به شدت به این سبک‌ها علاقه دارد:\n" + "\n".join(liked_movies) + "\n"
     if disliked_movies:
         taste_profile += "❌ کاربر از این سبک‌ها متنفر است (پیشنهاد نده):\n" + "\n".join(disliked_movies) + "\n"
-        
     return taste_profile if taste_profile else "اطلاعات امتیازدهی کافی نیست."
+
+# ==========================================
+# 🥇 توابع جدید: حافظه طلایی هوش مصنوعی (RLAIF)
+# ==========================================
+def save_golden_example(content):
+    """ذخیره پاسخ‌هایی که از منتقد نمره بالا گرفته‌اند"""
+    m_id = str(uuid.uuid4())
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO golden_memory (id, content, timestamp) VALUES (?, ?, ?)",
+        (m_id, content, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
+    conn.close()
+
+def get_golden_examples(limit=2):
+    """استخراج تصادفی نمونه‌های طلایی برای پرامپت چند-مرحله‌ای (Few-Shot)"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute("SELECT content FROM golden_memory ORDER BY RANDOM() LIMIT ?", (limit,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows:
+        return "هنوز نمونه طلایی در دیتابیس وجود ندارد."
+        
+    examples = ""
+    for idx, row in enumerate(rows):
+        # خلاصه کردن متن طلایی برای جلوگیری از سرریز شدن پرامپت
+        clean_text = '\n'.join(row[0].split('\n')[:8]) + "\n..." 
+        examples += f"نمونه طلایی {idx+1}:\n{clean_text}\n\n"
+    return examples

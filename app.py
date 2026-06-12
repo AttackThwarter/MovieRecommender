@@ -20,15 +20,15 @@ import config
 from database import (
     init_db, save_message, load_messages, get_user_sessions, 
     delete_session, update_feedback, save_user_profile, 
-    get_user_profile, get_all_user_messages, get_user_taste_from_ratings
+    get_user_profile, get_all_user_messages, get_user_taste_from_ratings,
+    save_golden_example, get_golden_examples # <--- توابع جدید مقاله
 )
 
 # --- ۱. راه‌اندازی دیتابیس ---
 init_db()
 
-# --- تابع جدید ارتباط مستقیم و ضد-پروکسی (جایگزین کتابخانه OpenAI) ---
+# --- تابع ارتباط مستقیم (Requests) ---
 def call_local_model(base_url, api_key, model_name, messages, temperature):
-    """این تابع مستقیما با requests وصل می‌شود و تمام ارورهای httpx را دور می‌زند"""
     url = f"{base_url}/chat/completions"
     headers = {"Content-Type": "application/json"}
     if api_key:
@@ -40,11 +40,9 @@ def call_local_model(base_url, api_key, model_name, messages, temperature):
         "temperature": temperature
     }
     
-    # خاموش کردن اجباری پروکسی فقط برای این درخواست (مثل فایل test.py)
     proxies = {"http": None, "https": None}
-    
     response = requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=120)
-    response.raise_for_status() # اگر سرور ارور بدهد اینجا متوقف می‌شود
+    response.raise_for_status() 
     return response.json()["choices"][0]["message"]["content"]
 
 
@@ -104,7 +102,6 @@ def background_profile_update(username):
     if msg_count in [2, 5, 10, 20, 40]:
         try:
             analysis_prompt = f"با توجه به این پیام‌ها سلیقه سینمایی کاربر را در یک جمله کوتاه خلاصه کن: {str(history)}"
-            # استفاده از تابع جدید
             response_text = call_local_model(
                 base_url=config.GEN_BASE_URL,
                 api_key=config.GEN_API_KEY,
@@ -176,22 +173,28 @@ for message in st.session_state.messages:
             st.markdown(message["content"])
             
             if message["role"] == "assistant":
-                st.caption("🔹 ثبت امتیاز به پیشنهاد بالا: **[ 1 ستاره: ضعیف ]** ─── **[ 5 ستاره: عالی ]**")
-                user_rating = st.feedback("stars", key=f"star_{message['id']}")
-                if user_rating is not None:
-                    actual_stars = user_rating + 1
-                    if str(message.get("feedback")) != str(actual_stars):
+                saved_feedback = message.get("feedback")
+                
+                if saved_feedback and saved_feedback != "None":
+                    stars = int(saved_feedback)
+                    st.caption(f"⭐ **امتیاز ثبت شده شما:** {'★' * stars}{'☆' * (5 - stars)}")
+                else:
+                    st.caption("🔹 ثبت امتیاز به پیشنهاد بالا: **[ 1 ستاره: ضعیف ]** ─── **[ 5 ستاره: عالی ]**")
+                    user_rating = st.feedback("stars", key=f"star_{message['id']}")
+                    if user_rating is not None:
+                        actual_stars = user_rating + 1
                         update_feedback(message["id"], str(actual_stars))
                         message["feedback"] = str(actual_stars)
                         if actual_stars >= 4:
-                            st.toast(f"ممنون از {actual_stars} ستاره‌ای که دادی! تو حافظه‌ام موند. 😍")
+                            st.toast(f"ممنون از {actual_stars} ستاره‌ای که دادی! 😍")
                         elif actual_stars <= 2:
                             st.toast(f"اوپس! {actual_stars} ستاره؟ دفعه بعد جبران می‌کنم. 😅")
                         else:
                             st.toast("امتیازت ثبت شد!")
+                        st.rerun() 
 
 # ==========================================
-# 🧠 ۸. هسته پردازش پنهان چند-عامله (Multi-Agent Logic)
+# 🧠 ۸. هسته پردازش پنهان چند-عامله و RLAIF
 # ==========================================
 prompt = st.chat_input("چه فیلمی پیشنهاد می‌دی؟")
 
@@ -203,6 +206,9 @@ if prompt:
 
     user_style = get_user_profile(username)
     rating_history = get_user_taste_from_ratings(username)
+    
+    # 🥇 استخراج حافظه طلایی برای آموزش در لحظه مدل
+    golden_examples_text = get_golden_examples(limit=2)
 
     enable_critic = mode_config["use_critic"]
     with st.chat_message("assistant"):
@@ -220,15 +226,16 @@ if prompt:
                 attempt += 1
                 feedback_str = f"<critic_feedback>\n{critic_feedback}\n</critic_feedback>" if enable_critic and attempt > 1 else ""
                 
+                # تزریق متغیرهای جدید مقاله به پرامپت
                 GEN_PROMPT = config.GEN_PROMPT_TEMPLATE.format(
                     user_style=user_style,
                     rating_history=rating_history,
+                    golden_examples=golden_examples_text,
                     rag_context=rag_context,
                     feedback_section=feedback_str
                 )
 
                 try:
-                    # استفاده از تابع امن جدید برای تولید پیام
                     draft_response = call_local_model(
                         base_url=config.GEN_BASE_URL,
                         api_key=config.GEN_API_KEY,
@@ -243,7 +250,6 @@ if prompt:
                             draft_response=draft_response
                         )
                         
-                        # استفاده از تابع امن جدید برای منتقد
                         cri_model_to_use = config.CRI_MODEL_NAME if config.USE_SEPARATE_CRITIC else config.GEN_MODEL_NAME
                         cri_url_to_use = config.CRI_BASE_URL if config.USE_SEPARATE_CRITIC else config.GEN_BASE_URL
                         cri_key_to_use = config.CRI_API_KEY if config.USE_SEPARATE_CRITIC else config.GEN_API_KEY
@@ -256,9 +262,24 @@ if prompt:
                             temperature=config.CRI_TEMP
                         )
                         
+                        # 🥇 منطق مقاله: استخراج نمره هوش مصنوعی و ذخیره در حافظه طلایی
                         if "APPROVED" in critic_feedback.upper():
                             approved = True
                             final_response = draft_response
+                            
+                            try:
+                                # پیدا کردن نمره از متن (مثال: APPROVED | SCORE: 9)
+                                score_part = critic_feedback.upper().split("SCORE:")[-1].strip()
+                                score_digits = ''.join(filter(str.isdigit, score_part))
+                                if score_digits:
+                                    score = int(score_digits)
+                                    # اگر نمره ۹ یا ۱۰ بود، شاهکار مدل ذخیره می‌شود
+                                    if score >= 8:
+                                        save_golden_example(draft_response)
+                                        print(f"🌟 یک نمونه طلایی با نمره {score} در دیتابیس ثبت شد!")
+                            except Exception as e:
+                                print(f"خطا در خواندن نمره منتقد: {e}")
+                                
                     else:
                         approved = True
                         final_response = draft_response
@@ -284,10 +305,11 @@ if prompt:
             update_feedback(b_id, str(actual_stars_new))
             st.session_state.messages[-1]["feedback"] = str(actual_stars_new)
             if actual_stars_new >= 4:
-                st.toast(f"ممنون از {actual_stars_new} ستاره‌ای که دادی! تو حافظه‌ام موند. 😍")
+                st.toast(f"ممنون از {actual_stars_new} ستاره‌ای که دادی! 😍")
             elif actual_stars_new <= 2:
                 st.toast(f"اوپس! {actual_stars_new} ستاره؟ دفعه بعد جبران می‌کنم. 😅")
             else:
                 st.toast("امتیازت ثبت شد!")
+            st.rerun()
         
         background_profile_update(username)
