@@ -1,3 +1,4 @@
+
 # 🎬 Smart Movie Recommender with Hybrid RAG & Multi-Agent Architecture
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)
@@ -13,50 +14,43 @@
 
 <br>
 
-> یک سیستم پیشنهاددهنده فیلم پیشرفته که از ترکیب قدرت **معماری چند-عامله (Multi-Agent)** و **RAG هیبریدی** برای ارائه دقیق‌ترین پیشنهادات سینمایی استفاده می‌کند. این پروژه برای مقالات علمی در حوزه سیستم‌های پیشنهاددهنده چندزبانه و مدل‌های زبانی لوکال طراحی شده است.
+> یک سیستم پیشنهاددهنده فیلم پیشرفته که از ترکیب قدرت **معماری چند-عامله (Multi-Agent)**، **RAG هیبریدی** و **فیلترینگ مشارکتی مبتنی بر هوش مصنوعی** برای ارائه دقیق‌ترین پیشنهادات سینمایی استفاده می‌کند. این پروژه برای مقالات علمی در حوزه سیستم‌های پیشنهاددهنده چندزبانه و مدل‌های زبانی لوکال (SLMs) طراحی شده است.
 
 ## 🌟 ویژگی‌های کلیدی
-- **معماری چند-عامله (Generator-Critic):** استفاده از دو عامل هوشمند؛ یکی برای تولید پیشنهاد (Generator) و دیگری برای ارزیابی و اصلاح خروجی (Critic) بر اساس قوانین کاربر.
-- **معماری Hybrid RAG:** ترکیب پایگاه داده برداری (ChromaDB) برای فیلم‌های محلی/ایرانی و دانش درونی مدل (Parametric Knowledge) برای سینمای جهان.
-- **انعطاف‌پذیری در اتصال مدل‌ها:** قابلیت اجرای ۵ حالت مختلف (فقط لوکال، فقط API، ترکیب لوکال-لوکال، ترکیب API-API و حالت هیبریدی لوکال-API).
-- **مهندسی پرامپت پیشرفته (XML-Based):** استفاده از تگ‌های ساختاریافته برای کنترل دقیق مدل‌های لوکال و جلوگیری از لو رفتن دستورات سیستم (Prompt Leakage).
-- **تحلیل هوشمند رفتار کاربر:** استخراج خودکار پروفایل سلیقه سینمایی کاربر از تاریخچه چت‌ها برای شخصی‌سازی دقیق پیشنهادات.
-- **شفافیت پردازش:** نمایش زنده مراحل "همفکری" و "ارزیابی" بین عوامل هوش مصنوعی در رابط کاربری.
+- **فیدبک صریح ۵ ستاره (Explicit Feedback Loop):** سیستم یادگیرنده که امتیازات قبلی کاربر (۱ تا ۵ ستاره) را تحلیل کرده و به صورت خودکار ژانرهای منفور (Blacklist) و محبوب (Whitelist) را در پرامپت‌های بعدی به مدل تزریق می‌کند.
+- **پروفایل‌سازی پنهان (Implicit Profiling):** حل مشکل *Cold Start* از طریق تحلیل خودکار تاریخچه چت‌ها در بک‌گراند و ساخت شخصیت سینمایی کاربر.
+- **معماری چند-عامله (Generator-Critic):** استفاده از دو عامل هوشمند؛ تولیدکننده (Generator) و منتقد (Critic) با قابلیت تنظیم روی ۳ حالت پردازشی: `Fast` (بدون بازبینی)، `Pro` (یک دور بازبینی) و `Ultra` (حلقه بازبینی سخت‌گیرانه چندمرحله‌ای).
+- **معماری Hybrid RAG:** ترکیب پایگاه داده برداری (ChromaDB) برای فیلم‌های ایرانی و دانش درونی مدل (Parametric Knowledge) برای سینمای جهان.
+- **معماری Config-Driven و ضد تحریم:** انتقال تمام تنظیمات مدل‌ها و پرامپت‌ها به `config.py` و طراحی یک کلاینت اختصاصی (`requests-based`) برای دور زدن قطعی اختلالات شبکه‌ای و پروکسی‌های ویندوز (Bypass WinError 10061).
 
 ## 🏛️ معماری سیستم
-1. **لایه داده:** SQLite برای مدیریت نشست‌ها و ChromaDB با استفاده از `sentence-transformers` چندزبانه.
-2. **لایه منطق چند-عامله:** یک حلقه تکرار شونده (Iterative Loop) که در آن منتقد دستورات اصلاحی را به تولیدکننده ارسال می‌کند تا خروجی به استانداردهای مطلوب برسد.
-3. **لایه رابط کاربر:** پیاده‌سازی شده با Streamlit برای تعامل بلادرنگ و خروجی‌های PDF/TXT.
+1. **لایه داده:** پایگاه داده `SQLite` برای مدیریت نشست‌ها، تاریخچه لایک/دیسلایک و پروفایل‌ها + پایگاه داده برداری `ChromaDB` با مدل امبدینگ `sentence-transformers`.
+2. **لایه منطق چند-عامله:** سیستم خوداصلاح‌گر (Self-Correction) که با مهندسی پرامپت مبتنی بر تگ‌های XML هدایت می‌شود.
+3. **لایه رابط کاربر:** داشبورد تعاملی Streamlit با سیستم امتیازدهی ۵ ستاره، نمایشگر Badge پردازشی و خروجی‌گیر پیشرفته (PDF/TXT).
 
 ## 📚 هدف آکادمیک
-این پروژه به عنوان یک بستر تحقیقاتی برای بررسی تاثیر **ارزیابی خودکار (Automated Evaluation)** بر کیفیت خروجی مدل‌های زبانی کوچک (SLMs) در محیط‌های محدود (Local) توسعه یافته است.
+این پروژه به عنوان یک بستر تحقیقاتی برای بررسی تاثیر **تزریق تاریخچه تعاملات (Preference Injection)** و **ارزیابی خودکار (Automated Evaluation)** بر کیفیت خروجی مدل‌های زبانی کوچک در محیط‌های ایزوله توسعه یافته است.
 
 </details>
 
 ---
 
-A state-of-the-art movie recommendation system that leverages **Multi-Agent Systems (MAS)** and **Hybrid RAG** to deliver highly accurate, rule-compliant, and personalized suggestions.
+A state-of-the-art movie recommendation system that leverages **Multi-Agent Systems (MAS)**, **Hybrid RAG**, and **LLM-Based Explicit Feedback Loops** to deliver highly accurate, rule-compliant, and personalized suggestions.
 
 ---
 
 ## 🌟 Key Features
-- **Multi-Agent Architecture (Generator-Critic):** Implements a sophisticated loop where a **Generator Agent** drafts suggestions and a **Critic Agent** audits them for language accuracy, movie count, and formatting.
-- **Hybrid RAG Engine:** Merges local vector search (ChromaDB) for niche/Persian cinema with the LLM's internal knowledge for global masterpieces.
-- **Universal Connectivity:** Supports 5 distinct execution modes:
-    - Pure Local (LM Studio)
-    - Pure API (OpenAI)
-    - Dual Local (Different models for Generator/Critic)
-    - Dual API (High-end model as Critic)
-    - Hybrid (Local Generator + API Critic)
-- **Structured Prompt Engineering:** Employs XML-tagging and Few-Shot prompting to maximize reasoning capabilities in Local LLMs and prevent prompt leakage.
-- **LLM-Based User Profiling:** Dynamically analyzes chat history to construct a persistent "Cinematic Persona" for each user.
-- **Thought Visualization:** Real-time monitoring of agent debates and reasoning steps within the UI.
+- **5-Star Explicit Feedback Loop:** Dynamically learns from user ratings. It uses prompt augmentation to inject historical preferences, automatically blacklisting low-rated genres (1-2 stars) and prioritizing favorites (4-5 stars) in future suggestions.
+- **Implicit Profiling Engine:** Solves the *Cold Start* problem by silently summarizing the user's chat history at specific milestones (e.g., messages 2, 5, 10) to construct a persistent "Cinematic Persona".
+- **Tiered Multi-Agent Architecture:** Implements a Generator-Critic reasoning loop with 3 execution tiers: `Fast` (zero-shot generation), `Pro` (1-pass critic evaluation), and `Ultra` (iterative, multi-pass strict evaluation).
+- **Hybrid RAG Engine:** Merges local vector search (ChromaDB) for niche/Persian cinema with the LLM's internal parametric knowledge for global masterpieces.
+- **Proxy-Resilient & Config-Driven:** Fully centralized configuration (`config.py`) and a custom `requests`-based API client designed to completely bypass system-level VPN/Proxy conflicts (e.g., WinError 10061) often encountered with standard libraries.
 
 ## 🏛️ System Architecture
 The system employs a high-performance multi-layered approach:
-1. **Data Layer:** SQLite for session management and user profiles; ChromaDB for semantic indexing of movie plots.
-2. **Multi-Agent Logic Layer:** A reasoning loop governed by structured instructions, where the Critic provides corrective feedback to the Generator until constraints are met.
-3. **UI Layer:** An interactive Streamlit dashboard supporting real-time streaming and advanced data export (PDF/TXT).
+1. **Data Layer:** `SQLite` for robust session state, profile retention, and feedback tracking. `ChromaDB` for semantic indexing.
+2. **Multi-Agent Logic Layer:** A reasoning loop governed by structured XML instructions, ensuring the SLM adheres strictly to format, language, and logic constraints.
+3. **UI Layer:** A streamlined Streamlit dashboard featuring interactive 5-star components, processing mode badges, and instant PDF/TXT export options.
 
 ## 🚀 Installation & Usage
 
@@ -65,33 +59,36 @@ The system employs a high-performance multi-layered approach:
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements.txt
+
 ```
 
-**2. Build the Vector Index:**
+**2. Configure the Application:**
+Edit `config.py` to match your local/remote LLM settings (ports, API keys, and model names).
+
+**3. Build the Vector Index:**
+
 ```bash
 python build_rag_db.py
+
 ```
 
-**3. Launch the App:**
+**4. Launch the App:**
+
 ```bash
 streamlit run app.py
+
 ```
 
 ## 📚 Academic Objective
-This project serves as a research platform to evaluate the effectiveness of **Self-Correction Loops** and **Multi-Agent Collaboration** in improving the output quality of Small Language Models (SLMs) in multilingual contexts.
 
+This project serves as a research platform to evaluate the effectiveness of **Self-Correction Loops**, **Multi-Agent Collaboration**, and **Direct Preference Injection** in improving the zero-shot/few-shot performance of Small Language Models (SLMs) in multilingual environments.
 
 ## 🙏 Acknowledgments
 
 Special thanks to **Mohammad** for his valuable [Persian Movie Dataset](https://github.com/mohammad26845/persian_movie_dataset), which was instrumental in building the RAG engine for this project.
 
-<details>
-<summary><strong>🇮🇷 قدردانی</strong></summary>
-با تشکر ویژه از **محمد** عزیز برای دیتاست ارزشمند [Persian Movie Dataset](https://github.com/mohammad26845/persian_movie_dataset) که منبع اصلی بخش RAG این پروژه برای فیلم‌های ایرانی بوده است.
-</details>
-
 ---
 
-
 ## 📄 License
+
 This project is licensed under the [MIT License](LICENSE).
