@@ -22,22 +22,21 @@ EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 # CRI_TEMP = 0.0
 import streamlit as st
 
-GEN_BASE_URL = "https://api.bluesminds.com/v1"  # بدون اسلش در انتها
+GEN_BASE_URL = "https://api.bluesminds.com/v1"
 CRI_BASE_URL = "https://api.bluesminds.com/v1"
 
-GEN_MODEL_NAME = "google/gemma-3-12b-it"
-CRI_MODEL_NAME = "google/gemma-3-12b-it"
 
-# اضافه کردن این دو خط که جا افتاده بود
+GEN_MODEL_NAME = "gpt-5-mini"
+CRI_MODEL_NAME = "gpt-5-mini"
+
 GEN_TEMP = 0.7
 CRI_TEMP = 0.3
-
 USE_SEPARATE_CRITIC = False
 
 try:
     API_KEY = st.secrets["BLUESMINDS_API_KEY"]
 except:
-    API_KEY = "کلید_لوکال_تو_در_صورت_نیاز"
+    API_KEY = "LOCAL_KEY"
 
 GEN_API_KEY = API_KEY
 CRI_API_KEY = API_KEY

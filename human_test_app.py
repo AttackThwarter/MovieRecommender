@@ -47,7 +47,7 @@ def call_local_model(base_url, api_key, model_name, messages, temperature):
         return response.choices[0].message.content
     except Exception as e:
         raise Exception(f"API Error: {str(e)}")
-        
+
 # --- ۳. توابع RAG ---
 @st.cache_resource
 def load_vector_db():
