@@ -11,14 +11,6 @@ import requests
 import chromadb
 from chromadb.utils import embedding_functions
 
-# --- دور زدن فیلترشکن در سطح سیستم‌عامل ---
-os.environ["HTTP_PROXY"] = ""
-os.environ["HTTPS_PROXY"] = ""
-os.environ["http_proxy"] = ""
-os.environ["https_proxy"] = ""
-os.environ["NO_PROXY"] = "*"
-os.environ["no_proxy"] = "*"
-
 import config
 from database import init_db, get_golden_examples, save_golden_example
 
@@ -31,7 +23,6 @@ CSV_FILE = "human_evaluation_results.csv"
 # --- ۱. راه‌اندازی دیتابیس ---
 init_db()
 
-# --- ۲. تابع ارتباط مستقیم (Requests) ---
 # --- ۲. تابع ارتباط با API (نسخه جدید با کتابخانه رسمی OpenAI) ---
 def call_local_model(base_url, api_key, model_name, messages, temperature):
     try:
@@ -47,7 +38,7 @@ def call_local_model(base_url, api_key, model_name, messages, temperature):
         return response.choices[0].message.content
     except Exception as e:
         raise Exception(f"API Error: {str(e)}")
-
+        
 # --- ۳. توابع RAG ---
 @st.cache_resource
 def load_vector_db():
