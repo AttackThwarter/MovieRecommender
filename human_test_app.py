@@ -186,8 +186,8 @@ if admin_password:
             st.sidebar.info("هنوز دیتایی در اکسل ثبت نشده است.")
             
         # ۲. دکمه دانلود دیتابیسِ حافظه طلایی (برای حفظ روند یادگیری سیستم)
-        # نکته: نام فایل دیتابیس خود را با نامی که در database.py تعریف کرده‌ای جایگزین کن (مثلا database.db)
-        DB_FILE = "database.db" 
+
+        DB_FILE = "movies_app.db" 
         if os.path.exists(DB_FILE):
             with open(DB_FILE, "rb") as db_file:
                 st.sidebar.download_button(

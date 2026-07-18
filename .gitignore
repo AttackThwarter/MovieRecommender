@@ -9,7 +9,7 @@ __pycache__/
 .vscode
 
 # Database and Vector DB
-movies_app.db
+# movies_app.db
 chroma_db/
 
 # OS generated files
