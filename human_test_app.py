@@ -2,6 +2,7 @@ __import__('pysqlite3')
 import sys
 sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
+from openai import OpenAI
 import streamlit as st
 import pandas as pd
 import random
@@ -31,16 +32,22 @@ CSV_FILE = "human_evaluation_results.csv"
 init_db()
 
 # --- ۲. تابع ارتباط مستقیم (Requests) ---
+# --- ۲. تابع ارتباط با API (نسخه جدید با کتابخانه رسمی OpenAI) ---
 def call_local_model(base_url, api_key, model_name, messages, temperature):
-    url = f"{base_url}/chat/completions"
-    headers = {"Content-Type": "application/json"}
-    if api_key: headers["Authorization"] = f"Bearer {api_key}"
-    payload = {"model": model_name, "messages": messages, "temperature": temperature}
-    proxies = {"http": None, "https": None}
-    response = requests.post(url, json=payload, headers=headers, proxies=proxies, timeout=120)
-    response.raise_for_status() 
-    return response.json()["choices"][0]["message"]["content"]
-
+    try:
+        client = OpenAI(
+            base_url=base_url,
+            api_key=api_key
+        )
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            temperature=temperature
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        raise Exception(f"API Error: {str(e)}")
+        
 # --- ۳. توابع RAG ---
 @st.cache_resource
 def load_vector_db():

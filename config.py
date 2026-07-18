@@ -20,24 +20,24 @@ EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 # CRI_API_KEY = "lm-studio"
 # CRI_MODEL_NAME = "gemma-3-12b-it-qat"
 # CRI_TEMP = 0.0
-
 import streamlit as st
 
-# تغییر آدرس به سرور Bluesminds
-GEN_BASE_URL = "https://api.bluesminds.com/v1"
+GEN_BASE_URL = "https://api.bluesminds.com/v1"  # بدون اسلش در انتها
 CRI_BASE_URL = "https://api.bluesminds.com/v1"
 
-# تغییر نام مدل بر اساس داکیومنت سایت
 GEN_MODEL_NAME = "google/gemma-3-12b-it"
 CRI_MODEL_NAME = "google/gemma-3-12b-it"
 
-# سیستم امنیتی خواندن کلید (برای جلوگیری از لو رفتن در گیت‌هاب)
+# اضافه کردن این دو خط که جا افتاده بود
+GEN_TEMP = 0.7
+CRI_TEMP = 0.3
+
+USE_SEPARATE_CRITIC = False
+
 try:
-    # وقتی روی سرور آنلاین باشیم، کلید را از اینجا می‌خواند
     API_KEY = st.secrets["BLUESMINDS_API_KEY"]
 except:
-    # وقتی روی لپ‌تاپ خودت تست می‌کنی، کلیدت را اینجا بذار
-    API_KEY = "کلید_خود_را_موقت_اینجا_بگذار"
+    API_KEY = "کلید_لوکال_تو_در_صورت_نیاز"
 
 GEN_API_KEY = API_KEY
 CRI_API_KEY = API_KEY
