@@ -10,16 +10,37 @@ EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 # ==========================================
 # 🤖 تنظیمات اتصال به مدل‌های هوش مصنوعی
 # ==========================================
-GEN_BASE_URL = "http://127.0.0.1:8087/v1"
-GEN_API_KEY = "lm-studio"
-GEN_MODEL_NAME = "gemma-3-12b-it-qat"  # نام دقیق مدل خود را اینجا بنویسید
-GEN_TEMP = 0.7
+# GEN_BASE_URL = "http://127.0.0.1:8087/v1"
+# GEN_API_KEY = "lm-studio"
+# GEN_MODEL_NAME = "gemma-3-12b-it-qat"  # نام دقیق مدل خود را اینجا بنویسید
+# GEN_TEMP = 0.7
 
-USE_SEPARATE_CRITIC = False
-CRI_BASE_URL = "http://127.0.0.1:8087/v1"
-CRI_API_KEY = "lm-studio"
-CRI_MODEL_NAME = "gemma-3-12b-it-qat"
-CRI_TEMP = 0.0
+# USE_SEPARATE_CRITIC = False
+# CRI_BASE_URL = "http://127.0.0.1:8087/v1"
+# CRI_API_KEY = "lm-studio"
+# CRI_MODEL_NAME = "gemma-3-12b-it-qat"
+# CRI_TEMP = 0.0
+
+import streamlit as st
+
+# تغییر آدرس به سرور Bluesminds
+GEN_BASE_URL = "https://api.bluesminds.com/v1"
+CRI_BASE_URL = "https://api.bluesminds.com/v1"
+
+# تغییر نام مدل بر اساس داکیومنت سایت
+GEN_MODEL_NAME = "google/gemma-3-12b-it"
+CRI_MODEL_NAME = "google/gemma-3-12b-it"
+
+# سیستم امنیتی خواندن کلید (برای جلوگیری از لو رفتن در گیت‌هاب)
+try:
+    # وقتی روی سرور آنلاین باشیم، کلید را از اینجا می‌خواند
+    API_KEY = st.secrets["BLUESMINDS_API_KEY"]
+except:
+    # وقتی روی لپ‌تاپ خودت تست می‌کنی، کلیدت را اینجا بذار
+    API_KEY = "کلید_خود_را_موقت_اینجا_بگذار"
+
+GEN_API_KEY = API_KEY
+CRI_API_KEY = API_KEY
 
 # ==========================================
 # ⚙️ تنظیمات پردازش و حالت‌های کاربری

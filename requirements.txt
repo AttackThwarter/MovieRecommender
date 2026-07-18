@@ -5,3 +5,7 @@ chromadb==0.4.24
 sentence-transformers==2.5.1
 pandas==2.2.1
 torchvision
+matplotlib
+seaborn
+requests
+pysqlite3-binary
