@@ -10,3 +10,4 @@ seaborn
 requests
 pysqlite3-binary
 openai
+httpx==0.27.2
